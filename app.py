@@ -498,54 +498,10 @@ def render_visuals(region: dict, visuals: list[dict], domains: list[dict]) -> No
         f"""
         <div class="section-head">
           <h2>Visual &amp; brand radar</h2>
-          <p>{esc(region["short"])}. Competitor markup, the colors already taken, and the pages holding the click.</p>
+          <p>{esc(region["short"])}. The colors already in market, the layouts still running, and who holds the search click.</p>
         </div>
         """
     )
-    show("<h3 class='serif' style='font-size:28px;margin:0.2rem 0 0.6rem;'>Competitor tech &amp; pixel audit</h3>")
-    url = st.text_input("Competitor URL", placeholder="https://", key="audit_url", label_visibility="collapsed")
-    run_audit = press("Read the page", key="audit_button")
-    if run_audit:
-        with st.spinner("Reading the public page…"):
-            st.session_state["audit"] = inspect_url(url)
-    audit = st.session_state.get("audit")
-    if not audit:
-        show(
-            """
-            <div class="card">
-              <p class="note">Paste a competitor address. The scan reads public HTML, headers, and common pixels.</p>
-              <p class="why">Pixels and the CMS tell you how demand is measured, and how heavy a rebuild will be. Pitch the measurement gap, not a shopping list of tools.</p>
-              <span class="source-badge">Source · PUBLIC PAGE HEADERS</span>
-            </div>
-            """
-        )
-    elif not audit.get("ok"):
-        show(
-            f"""
-            <div class="card">
-              <h3>Page not read</h3>
-              <p class="why">{esc(audit.get("error"))}</p>
-              <span class="source-badge">Source · {esc(audit.get("source"))}</span>
-            </div>
-            """
-        )
-    else:
-        tags = "".join(f'<span class="tag">{esc(tag)}</span>' for tag in audit.get("tags") or [])
-        if not tags:
-            tags = '<p class="note">No common marketing pixels, CMS platforms, or booking tools in the public HTML.</p>'
-        notes = "".join(f'<p class="note">{esc(note)}</p>' for note in audit.get("notes") or [])
-        show(
-            f"""
-            <div class="card">
-              <div class="kicker">{esc(audit.get("final_url"))}</div>
-              <div style="margin-top:12px">{tags}</div>
-              {notes}
-              <p class="why">Pixels and the CMS tell you how demand is measured, and how heavy a rebuild will be. Pitch the measurement gap, not a shopping list of tools.</p>
-              <span class="source-badge">Source · {esc(audit.get("source"))}</span>
-            </div>
-            """
-        )
-
     if visuals:
         lead = visuals[0]
         palette_frame(
@@ -820,6 +776,99 @@ def render_strategy(region: dict, timeframe: str, visuals: list[dict], hooks: li
                 render_proposal(row.get("generated_proposal") or "", "DEEPSEEK")
 
 
+def _swatches(colors: list[str]) -> str:
+    blocks = []
+    for color in colors[:5]:
+        hx = safe_hex(color)
+        blocks.append(
+            f'<div style="flex:1;min-width:0"><div style="height:48px;background:{hx};border:1px solid #E2E2DC"></div>'
+            f'<div style="margin-top:6px;font-size:12px;letter-spacing:0.04em">{hx}</div></div>'
+        )
+    return f'<div style="display:flex;gap:10px;margin-top:12px">{"".join(blocks)}</div>'
+
+
+def _finding_column(title: str, findings: list[dict]) -> str:
+    if not findings:
+        body = '<p class="note">Nothing in this column.</p>'
+    else:
+        rows = []
+        for item in findings:
+            rows.append(
+                f"""
+                <div style="padding-top:12px;margin-top:12px;border-top:1px solid #E2E2DC">
+                  <div class="kicker">{esc(item.get("title"))}</div>
+                  <p class="meta-line">{esc(item.get("detail"))}</p>
+                </div>
+                """
+            )
+        body = "".join(rows)
+    return f'<div class="card"><div class="kicker">{esc(title)}</div>{body}</div>'
+
+
+def render_site() -> None:
+    show(
+        """
+        <div class="section-head">
+          <h2>Site read</h2>
+          <p>Paste the client’s current site, or a competitor of that client. The desk reads the public page and separates what is already working from what to raise in the meeting.</p>
+        </div>
+        """
+    )
+    url = st.text_input("Site address", placeholder="https://", key="audit_url", label_visibility="collapsed")
+    if press("Read the page", key="audit_button"):
+        with st.spinner("Reading the public page…"):
+            st.session_state["audit"] = inspect_url(url)
+    audit = st.session_state.get("audit")
+    if not audit:
+        return
+    if not audit.get("ok"):
+        show(
+            f"""
+            <div class="card">
+              <h3>Page not read</h3>
+              <p class="why">{esc(audit.get("error"))}</p>
+              <span class="source-badge">Source · {esc(audit.get("source"))}</span>
+            </div>
+            """
+        )
+        return
+    page = audit.get("page") or {}
+    findings = audit.get("findings") or []
+    working = [item for item in findings if item.get("kind") == "ok"]
+    raise_items = [item for item in findings if item.get("kind") == "raise"]
+    tags = "".join(f'<span class="tag">{esc(tag)}</span>' for tag in audit.get("tags") or [])
+    notes = "".join(f'<p class="note">{esc(note)}</p>' for note in audit.get("notes") or [])
+    ctas = ", ".join(page.get("ctas") or [])
+    show(
+        f"""
+        <div class="card">
+          <div class="kicker">{esc(audit.get("final_url"))}</div>
+          <h3>{esc(page.get("title") or "Untitled page")}</h3>
+          <p class="meta-line">{esc(audit.get("summary"))}</p>
+          <span class="source-badge">Source · PUBLIC PAGE</span>
+        </div>
+        """
+    )
+    show('<div class="grid-2">' + _finding_column("Working", working) + _finding_column("Raise in the meeting", raise_items) + "</div>")
+    color_block = ""
+    if audit.get("colors"):
+        color_block += "<p class=\"note\">Colors written in the page</p>" + _swatches(audit["colors"])
+    if audit.get("image_colors"):
+        color_block += "<p class=\"note\" style=\"margin-top:14px\">Colors in the picture used when the link is shared</p>" + _swatches(audit["image_colors"])
+    show(
+        f"""
+        <div class="card">
+          <div class="kicker">How the page is built</div>
+          <div style="margin-top:12px">{tags or '<p class="note">No familiar platform or pixel in the public HTML.</p>'}</div>
+          {notes}
+          <p class="meta-line">{esc(ctas) if ctas else "No obvious button labels on the page."}</p>
+          {color_block}
+          <span class="source-badge">Source · PUBLIC PAGE</span>
+        </div>
+        """
+    )
+
+
 def render_desk() -> None:
     render_masthead()
     region_id, timeframe = render_controls()
@@ -827,13 +876,15 @@ def render_desk() -> None:
     visuals = fetch_visuals(region_id, timeframe)
     hooks = fetch_hooks(region_id, timeframe)
     domains = fetch_domains(region_id, timeframe)
-    visual_tab, hook_tab, strategy_tab = st.tabs(
-        ["Visual & Brand Radar", "Short-Form Hook Engine", "Strategic Assistant"]
+    visual_tab, hook_tab, site_tab, strategy_tab = st.tabs(
+        ["Visual & Brand Radar", "Short-Form Hook Engine", "Site read", "Strategic Assistant"]
     )
     with visual_tab:
         render_visuals(region, visuals, domains)
     with hook_tab:
         render_hooks(region, timeframe, hooks)
+    with site_tab:
+        render_site()
     with strategy_tab:
         render_strategy(region, timeframe, visuals, hooks, domains)
     show('<p class="footer">diArtis Studio · Varna · For pitch preparation</p>')
