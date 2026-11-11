@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hmac
 import inspect
 import re
 from datetime import datetime
@@ -16,7 +15,6 @@ from config import (
     LABEL_TO_REGION,
     REGIONS,
     SOURCE_BRAND,
-    STUDIO_PASSCODE,
     TIMEFRAMES,
     scrub,
 )
@@ -278,13 +276,6 @@ def embed_html(document: str) -> None:
     components.html(document, height=340, scrolling=False)
 
 
-def columns(spec, **kwargs):
-    kwargs.setdefault("wrap", False)
-    kwargs.setdefault("vertical_alignment", "top")
-    kwargs.setdefault("gap", "medium")
-    return st.columns(spec, **kwargs)
-
-
 def inject_css() -> None:
     st.html(f"<style>{CSS}</style>")
 
@@ -414,41 +405,6 @@ def palette_frame(colors: list[str], eyebrow: str, title: str, note: str, why: s
     ):
         document = document.replace(token, value)
     embed_html(document)
-
-
-def render_gate() -> None:
-    show(
-        """
-        <div class="masthead">
-          <p class="eyebrow">Varna · Internal desk</p>
-          <h1>diArtis Studio — Market Intelligence</h1>
-          <p class="deck">Regional trend analysis, visual radar &amp; strategic pitch co-pilot</p>
-        </div>
-        """
-    )
-    column, _ = columns((1.2, 1.5))
-    with column:
-        show("<div style='height:1.2rem'></div>")
-        password = st.text_input(
-            "Studio passcode",
-            type="password",
-            label_visibility="collapsed",
-            placeholder="Studio passcode",
-            key="passcode",
-        )
-        submitted = press("Enter studio", key="enter_studio", primary=True)
-        if submitted:
-            if not STUDIO_PASSCODE:
-                st.session_state["auth_note"] = "The studio passcode is not configured."
-            elif password and hmac.compare_digest(password.encode(), STUDIO_PASSCODE.encode()):
-                st.session_state["unlocked"] = True
-                st.session_state["auth_note"] = ""
-                st.rerun()
-            else:
-                st.session_state["auth_note"] = "That passcode is not recognized." if password else "Enter the studio passcode."
-        note = st.session_state.get("auth_note")
-        if note:
-            show(f'<p class="why center">{esc(note)}</p>')
 
 
 def render_masthead() -> None:
@@ -866,9 +822,6 @@ def main() -> None:
             </div>
             """
         )
-        return
-    if not st.session_state.get("unlocked"):
-        render_gate()
         return
     render_desk()
 
