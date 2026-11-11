@@ -1,7 +1,7 @@
 """SQLite cache, schema, and timeframe queries.
 
-`insight` and `source` sit beside the requested columns so every card can
-carry an honest attribution and a creative reading of the metric.
+Every card field is stored as a labeled fact (brand, rank, views, hex, objection)
+so the desk never has to invent a caption for a bare number.
 """
 
 from __future__ import annotations
@@ -24,6 +24,23 @@ CREATE TABLE IF NOT EXISTS visual_trends (
     screenshot_url TEXT,
     timestamp TEXT NOT NULL,
     insight TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT 'STUDIO BASELINE',
+    brand_name TEXT NOT NULL DEFAULT '',
+    signal TEXT NOT NULL DEFAULT '',
+    strategy_note TEXT NOT NULL DEFAULT '',
+    niche TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS color_radar (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    region TEXT NOT NULL,
+    niche TEXT NOT NULL,
+    saturation_pct INTEGER NOT NULL,
+    color_name TEXT NOT NULL,
+    dominant_hex TEXT NOT NULL,
+    whitespace_note TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    insight TEXT NOT NULL DEFAULT '',
     source TEXT NOT NULL DEFAULT 'STUDIO BASELINE'
 );
 
@@ -36,7 +53,9 @@ CREATE TABLE IF NOT EXISTS video_hooks (
     engagement_tier TEXT NOT NULL,
     timestamp TEXT NOT NULL,
     insight TEXT NOT NULL DEFAULT '',
-    source TEXT NOT NULL DEFAULT 'STUDIO BASELINE'
+    source TEXT NOT NULL DEFAULT 'STUDIO BASELINE',
+    views_label TEXT NOT NULL DEFAULT '',
+    pace_label TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS domain_metrics (
@@ -48,7 +67,13 @@ CREATE TABLE IF NOT EXISTS domain_metrics (
     rank_change INTEGER,
     timestamp TEXT NOT NULL,
     insight TEXT NOT NULL DEFAULT '',
-    source TEXT NOT NULL DEFAULT 'STUDIO BASELINE'
+    source TEXT NOT NULL DEFAULT 'STUDIO BASELINE',
+    monthly_traffic TEXT NOT NULL DEFAULT '',
+    search_status TEXT NOT NULL DEFAULT '',
+    movement_label TEXT NOT NULL DEFAULT '',
+    objection_share TEXT NOT NULL DEFAULT '',
+    objection_where TEXT NOT NULL DEFAULT '',
+    objection_text TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS copilot_history (
@@ -60,10 +85,32 @@ CREATE TABLE IF NOT EXISTS copilot_history (
 );
 
 CREATE INDEX IF NOT EXISTS idx_visual_region_time ON visual_trends(region, timestamp);
+CREATE INDEX IF NOT EXISTS idx_radar_region_time ON color_radar(region, timestamp);
 CREATE INDEX IF NOT EXISTS idx_hooks_region_time ON video_hooks(region, timestamp);
 CREATE INDEX IF NOT EXISTS idx_domains_region_time ON domain_metrics(region, timestamp);
 CREATE INDEX IF NOT EXISTS idx_copilot_region_time ON copilot_history(region, timestamp);
 """
+
+_ADDED_COLUMNS = {
+    "visual_trends": {
+        "brand_name": "TEXT NOT NULL DEFAULT ''",
+        "signal": "TEXT NOT NULL DEFAULT ''",
+        "strategy_note": "TEXT NOT NULL DEFAULT ''",
+        "niche": "TEXT NOT NULL DEFAULT ''",
+    },
+    "video_hooks": {
+        "views_label": "TEXT NOT NULL DEFAULT ''",
+        "pace_label": "TEXT NOT NULL DEFAULT ''",
+    },
+    "domain_metrics": {
+        "monthly_traffic": "TEXT NOT NULL DEFAULT ''",
+        "search_status": "TEXT NOT NULL DEFAULT ''",
+        "movement_label": "TEXT NOT NULL DEFAULT ''",
+        "objection_share": "TEXT NOT NULL DEFAULT ''",
+        "objection_where": "TEXT NOT NULL DEFAULT ''",
+        "objection_text": "TEXT NOT NULL DEFAULT ''",
+    },
+}
 
 
 def utc_now() -> str:
@@ -92,9 +139,20 @@ def connect() -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
+def _migrate(conn: sqlite3.Connection) -> None:
+    for table, columns in _ADDED_COLUMNS.items():
+        existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if not existing:
+            continue
+        for name, declaration in columns.items():
+            if name not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {declaration}")
+
+
 def init_db() -> None:
     with connect() as conn:
         conn.executescript(SCHEMA)
+        _migrate(conn)
 
 
 _TIMEFRAME_DAYS = {
@@ -156,7 +214,22 @@ def fetch_visuals(region: str, timeframe: str) -> list[dict]:
     )
     for row in rows:
         row["hex_codes"] = _loads(row.get("hex_codes"), [])
-    return _latest_unique(rows, lambda row: row.get("ad_format"))
+    return _latest_unique(
+        rows,
+        lambda row: ((row.get("brand_name") or "").strip(), row.get("ad_format")),
+    )
+
+
+def fetch_radar(region: str, timeframe: str) -> list[dict]:
+    rows = _query(
+        """
+        SELECT * FROM color_radar
+        WHERE region = ? AND timestamp >= ?
+        ORDER BY timestamp DESC, id DESC
+        """,
+        (region, timeframe_cutoff(timeframe)),
+    )
+    return _latest_unique(rows, lambda row: row.get("niche"))
 
 
 def fetch_hooks(region: str, timeframe: str) -> list[dict]:
@@ -193,12 +266,14 @@ def latest_cache_time(region: str) -> datetime | None:
         SELECT MAX(timestamp) AS ts FROM (
             SELECT MAX(timestamp) AS timestamp FROM visual_trends WHERE region = ?
             UNION ALL
+            SELECT MAX(timestamp) FROM color_radar WHERE region = ?
+            UNION ALL
             SELECT MAX(timestamp) FROM video_hooks WHERE region = ?
             UNION ALL
             SELECT MAX(timestamp) FROM domain_metrics WHERE region = ?
         )
         """,
-        (region, region, region),
+        (region, region, region, region),
     )
     if not rows:
         return None
@@ -246,8 +321,8 @@ def insert_visual(item: dict, conn: sqlite3.Connection | None = None) -> None:
         """
         INSERT INTO visual_trends (
             region, hex_codes, ad_format, active_days, screenshot_url,
-            timestamp, insight, source
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            timestamp, insight, source, brand_name, signal, strategy_note, niche
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             item["region"],
@@ -257,6 +332,33 @@ def insert_visual(item: dict, conn: sqlite3.Connection | None = None) -> None:
             item.get("screenshot_url") or "",
             item.get("timestamp") or utc_now(),
             item.get("insight") or "",
+            item.get("source") or "STUDIO BASELINE",
+            item.get("brand_name") or "",
+            item.get("signal") or "",
+            item.get("strategy_note") or item.get("insight") or "",
+            item.get("niche") or "",
+        ),
+    )
+
+
+def insert_radar(item: dict, conn: sqlite3.Connection | None = None) -> None:
+    _write(
+        conn,
+        """
+        INSERT INTO color_radar (
+            region, niche, saturation_pct, color_name, dominant_hex,
+            whitespace_note, timestamp, insight, source
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            item["region"],
+            item["niche"],
+            int(item["saturation_pct"]),
+            item["color_name"],
+            item["dominant_hex"],
+            item["whitespace_note"],
+            item.get("timestamp") or utc_now(),
+            item.get("insight") or item.get("whitespace_note") or "",
             item.get("source") or "STUDIO BASELINE",
         ),
     )
@@ -271,8 +373,8 @@ def insert_hook(item: dict, conn: sqlite3.Connection | None = None) -> None:
         """
         INSERT INTO video_hooks (
             region, hook_text, archetype, script_structure, engagement_tier,
-            timestamp, insight, source
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            timestamp, insight, source, views_label, pace_label
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             item["region"],
@@ -283,6 +385,8 @@ def insert_hook(item: dict, conn: sqlite3.Connection | None = None) -> None:
             item.get("timestamp") or utc_now(),
             item.get("insight") or "",
             item.get("source") or "STUDIO BASELINE",
+            item.get("views_label") or "",
+            item.get("pace_label") or "",
         ),
     )
 
@@ -294,8 +398,9 @@ def insert_domain(item: dict, conn: sqlite3.Connection | None = None) -> None:
         """
         INSERT INTO domain_metrics (
             region, domain_name, target_keyword, rank_position, rank_change,
-            timestamp, insight, source
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            timestamp, insight, source, monthly_traffic, search_status,
+            movement_label, objection_share, objection_where, objection_text
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             item["region"],
@@ -306,6 +411,12 @@ def insert_domain(item: dict, conn: sqlite3.Connection | None = None) -> None:
             item.get("timestamp") or utc_now(),
             item.get("insight") or "",
             item.get("source") or "STUDIO BASELINE",
+            item.get("monthly_traffic") or "",
+            item.get("search_status") or "",
+            item.get("movement_label") or "",
+            item.get("objection_share") or "",
+            item.get("objection_where") or "",
+            item.get("objection_text") or "",
         ),
     )
 
@@ -322,7 +433,7 @@ def insert_proposal(region: str, brief: str, proposal: str, conn: sqlite3.Connec
 
 
 def table_count(table: str) -> int:
-    allowed = {"visual_trends", "video_hooks", "domain_metrics", "copilot_history"}
+    allowed = {"visual_trends", "color_radar", "video_hooks", "domain_metrics", "copilot_history"}
     if table not in allowed:
         raise ValueError(table)
     rows = _query(f"SELECT COUNT(*) AS n FROM {table}", ())

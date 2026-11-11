@@ -14,31 +14,52 @@ Do not invent rankings, budgets, or conversion rates.
 
 Structure the answer in exactly these three headings, each on its own line:
 
-1. VISUAL DIRECTION & COLOR POSITIONING
-2. SHORT-FORM VIDEO & HOOK ANGLE
-3. CLIENT PITCH POSITIONING STATEMENT
+1. VISUAL DIRECTION
+2. CONTENT & HOOK STRATEGY
+3. POSITIONING STATEMENT
 
-Under the first heading: name the palette to use, the competitor colors to leave alone, and where the visual whitespace is.
-Under the second heading: give one winning 3-second hook, then a four-block script labeled Hook, Customer Friction, Core Value, and Call to Action.
-Under the third heading: one sentence only. It is the line for the client presentation deck.
+Under Visual Direction: name the palette to use, the competitor colors to leave alone, and where the visual whitespace is.
+Under Content & Hook Strategy: give one opening hook, the view count and cut pace to borrow, then a four-beat script labeled Hook, Friction, Core Value, and Call to Action.
+Under Positioning Statement: one sentence only. It is the line for the client presentation deck.
+Quote ranks as "Rank #N", view counts as written, and durations as "N Days". Never print a bare number.
 """
 
 
-def compose_context(region_label: str, timeframe: str, visuals: list[dict], hooks: list[dict], domains: list[dict]) -> str:
+def compose_context(
+    region_label: str,
+    timeframe: str,
+    visuals: list[dict],
+    hooks: list[dict],
+    domains: list[dict],
+    radar: list[dict] | None = None,
+) -> str:
     color_lines = []
     for row in visuals[:4]:
         hexes = ", ".join(row.get("hex_codes") or [])
+        brand = row.get("brand_name") or row.get("ad_format")
+        note = row.get("strategy_note") or row.get("insight")
         color_lines.append(
-            f"- {row.get('ad_format')} ({row.get('active_days')} active days, {row.get('source')}): {hexes}. {row.get('insight')}"
+            f"- Brand: {brand}. Format: {row.get('ad_format')}. "
+            f"Duration active: {row.get('active_days')} Days. Signal: {row.get('signal') or 'not stated'}. "
+            f"Color palette HEX: {hexes}. Strategy: {note} Source: {row.get('source')}."
+        )
+    radar_lines = []
+    for row in (radar or [])[:3]:
+        radar_lines.append(
+            f"- Niche: {row.get('niche')}. Saturation: {row.get('saturation_pct')}% {row.get('color_name')} "
+            f"({row.get('dominant_hex')}). Whitespace: {row.get('whitespace_note')}"
         )
     hook_lines = []
     for row in hooks[:4]:
         script = row.get("script_structure") or {}
+        views = row.get("views_label") or row.get("engagement_tier") or "views not stated"
+        pace = row.get("pace_label") or "pace not stated"
         hook_lines.append(
             "\n".join(
                 [
-                    f"- [{row.get('archetype')} / {row.get('engagement_tier')} / {row.get('source')}] {row.get('hook_text')}",
-                    f"  Customer friction: {script.get('friction', '')}",
+                    f"- Opening hook: {row.get('hook_text')}",
+                    f"  Archetype: {row.get('archetype')}. Performance: {views} · {pace}. Source: {row.get('source')}.",
+                    f"  Friction: {script.get('friction', '')}",
                     f"  Core value: {script.get('value', '')}",
                     f"  Call to action: {script.get('cta', '')}",
                 ]
@@ -46,18 +67,28 @@ def compose_context(region_label: str, timeframe: str, visuals: list[dict], hook
         )
     rank_lines = []
     for row in domains[:6]:
-        change = row.get("rank_change")
-        movement = "new snapshot" if change is None else f"change {int(change):+d}"
+        movement = row.get("movement_label") or (
+            "new snapshot" if row.get("rank_change") is None else f"change {int(row['rank_change']):+d}"
+        )
         rank_lines.append(
-            f"- {row.get('target_keyword')} — {row.get('domain_name')} at position {row.get('rank_position')} ({movement}, {row.get('source')})"
+            f"- Target search query: {row.get('target_keyword')}. "
+            f"Domain: {row.get('domain_name')}. Google position: Rank #{row.get('rank_position')} ({movement}). "
+            f"Monthly traffic volume: {row.get('monthly_traffic') or 'not stated'}. "
+            f"Search volume status: {row.get('search_status') or 'not stated'}. "
+            f"Insight: {row.get('insight')} "
+            f"Objection: {row.get('objection_share') or ''} of comments {row.get('objection_where') or ''} "
+            f"ask: {row.get('objection_text') or 'not stated'}. Source: {row.get('source')}."
         )
     return "\n".join(
         [
-            f"Region on the desk: {region_label}",
-            f"Window: {timeframe}",
+            f"Geography on the desk: {region_label}",
+            f"Timeframe: {timeframe}",
             "",
-            "Color and format evidence:",
+            "Active competitor ads:",
             "\n".join(color_lines) or "- None in this window.",
+            "",
+            "Color whitespace:",
+            "\n".join(radar_lines) or "- None in this window.",
             "",
             "Opening hooks:",
             "\n".join(hook_lines) or "- None in this window.",
