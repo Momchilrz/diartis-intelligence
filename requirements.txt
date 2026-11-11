@@ -1,0 +1,8 @@
+streamlit>=1.40
+requests>=2.31
+beautifulsoup4>=4.12
+opencv-python-headless>=4.10
+scikit-learn>=1.5
+pillow>=10.4
+python-dotenv>=1.0
+numpy>=2.0
