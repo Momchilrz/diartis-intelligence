@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Iterator
 
 from config import DB_PATH, SOURCE_APIFY, SOURCE_SERPER, TIMEFRAMES
@@ -97,11 +97,18 @@ def init_db() -> None:
         conn.executescript(SCHEMA)
 
 
-def _window(timeframe: str) -> str:
-    try:
-        return TIMEFRAMES[timeframe]
-    except KeyError as exc:
-        raise ValueError(f"Unknown timeframe: {timeframe}") from exc
+_TIMEFRAME_DAYS = {
+    "24 Hours": 1,
+    "7 Days": 7,
+    "30 Days": 30,
+}
+
+
+def timeframe_cutoff(timeframe: str) -> str:
+    if timeframe not in TIMEFRAMES or timeframe not in _TIMEFRAME_DAYS:
+        raise ValueError(f"Unknown timeframe: {timeframe}")
+    moment = datetime.now(timezone.utc) - timedelta(days=_TIMEFRAME_DAYS[timeframe])
+    return moment.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _loads(value: str | None, fallback):
@@ -142,10 +149,10 @@ def fetch_visuals(region: str, timeframe: str) -> list[dict]:
     rows = _query(
         """
         SELECT * FROM visual_trends
-        WHERE region = ? AND timestamp >= datetime('now', ?)
+        WHERE region = ? AND timestamp >= ?
         ORDER BY timestamp DESC, id DESC
         """,
-        (region, _window(timeframe)),
+        (region, timeframe_cutoff(timeframe)),
     )
     for row in rows:
         row["hex_codes"] = _loads(row.get("hex_codes"), [])
@@ -156,10 +163,10 @@ def fetch_hooks(region: str, timeframe: str) -> list[dict]:
     rows = _query(
         """
         SELECT * FROM video_hooks
-        WHERE region = ? AND timestamp >= datetime('now', ?)
+        WHERE region = ? AND timestamp >= ?
         ORDER BY timestamp DESC, id DESC
         """,
-        (region, _window(timeframe)),
+        (region, timeframe_cutoff(timeframe)),
     )
     for row in rows:
         row["script_structure"] = _loads(row.get("script_structure"), {})
@@ -171,10 +178,10 @@ def fetch_domains(region: str, timeframe: str) -> list[dict]:
     rows = _query(
         """
         SELECT * FROM domain_metrics
-        WHERE region = ? AND timestamp >= datetime('now', ?)
+        WHERE region = ? AND timestamp >= ?
         ORDER BY timestamp DESC, id DESC
         """,
-        (region, _window(timeframe)),
+        (region, timeframe_cutoff(timeframe)),
     )
     rows = _prefer_live(rows, SOURCE_SERPER)
     return _latest_unique(rows, lambda row: (row.get("domain_name"), row.get("target_keyword")))
@@ -213,15 +220,15 @@ def latest_rank(region: str, domain: str, keyword: str) -> int | None:
     return int(rows[0]["rank_position"])
 
 
-def recent_proposals(region: str, limit: int = 5) -> list[dict]:
+def recent_proposals(region: str, timeframe: str, limit: int = 5) -> list[dict]:
     return _query(
         """
         SELECT * FROM copilot_history
-        WHERE region = ?
+        WHERE region = ? AND timestamp >= ?
         ORDER BY timestamp DESC, id DESC
         LIMIT ?
         """,
-        (region, limit),
+        (region, timeframe_cutoff(timeframe), limit),
     )
 
 

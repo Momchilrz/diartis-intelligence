@@ -36,7 +36,7 @@ from services.serp_monitor import refresh_region as refresh_search
 from services.tech_detector import inspect_url
 
 CSS = """
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Outfit:wght@300;400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500&family=Playfair+Display:ital,wght@0,500;0,600;1,500&display=swap');
 
 .stApp {
   background: #F8F8F5;
@@ -65,7 +65,7 @@ header[data-testid="stHeader"] {
 }
 .eyebrow, .filter-label, .kicker, .tier { letter-spacing: 0.14em; }
 .masthead h1, .section-head h2, .card h3, .quote, .position, .pace-num, .pitch-line, .serif {
-  font-family: "Cormorant Garamond", Georgia, "Times New Roman", serif;
+  font-family: "Playfair Display", Georgia, "Times New Roman", serif;
   font-weight: 500;
   color: #4C5539;
   letter-spacing: -0.025em;
@@ -81,7 +81,7 @@ header[data-testid="stHeader"] {
 .card {
   background: #FFFFFF;
   border: 1px solid #E2E2DC;
-  padding: 20px 22px;
+  padding: 20px;
   margin: 0 0 16px;
 }
 .card h3 { font-size: 26px; line-height: 1.15; margin: 0.15rem 0 0.4rem; }
@@ -89,13 +89,25 @@ header[data-testid="stHeader"] {
 .card-top, .rank, .pace-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; }
 .quote { font-size: 30px; line-height: 1.22; margin: 0.45rem 0 0.15rem; overflow-wrap: anywhere; }
 .why { font-size: 11px; line-height: 1.5; color: #666666; margin-top: 8px !important; }
-.source-badge { display: block; margin-top: 14px; }
+.source-badge {
+  display: inline-block;
+  margin-top: 14px;
+  background: #EFEFED;
+  border: 1px solid #E2E2DC;
+  color: #555555;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
 .meta-line { font-size: 14px; line-height: 1.45; color: #1A1A1A; margin-top: 0.35rem !important; }
 .note { font-size: 13px; line-height: 1.45; margin-top: 0.2rem !important; }
 .position { font-size: 46px; line-height: 0.85; }
 .pace-num { font-size: 42px; line-height: 0.9; }
 .pitch-line, .pitch-line p {
-  font-family: "Cormorant Garamond", Georgia, serif;
+  font-family: "Playfair Display", Georgia, serif;
   font-size: 28px;
   line-height: 1.35;
   color: #4C5539;
@@ -120,17 +132,24 @@ header[data-testid="stHeader"] {
 div[data-testid="stRadio"] [role="radiogroup"] { display: flex; flex-wrap: wrap; gap: 8px; }
 [data-testid="stRadioOption"] {
   background: #FFFFFF !important;
+  color: #1A1A1A !important;
   border: 1px solid #E2E2DC !important;
-  border-radius: 0 !important;
-  padding: 0.4rem 0.72rem !important;
+  border-radius: 4px !important;
+  padding: 0.42rem 0.8rem !important;
   margin: 0 !important;
+  font-weight: 400;
+  transition: background 0.15s ease;
 }
 [data-testid="stRadioOption"] > div > div:first-child { display: none !important; }
+[data-testid="stRadioOption"]:hover { background: #F0F0EC !important; }
 [data-testid="stRadioOption"][data-selected="true"] {
-  border-color: #4C5539 !important;
-  background: #F3F1EA !important;
+  background: #4C5539 !important;
+  color: #F8F8F5 !important;
+  border: 1px solid #4C5539 !important;
+  font-weight: 500;
 }
-[data-testid="stRadioOption"] p { margin: 0; font-size: 13px; }
+[data-testid="stRadioOption"][data-selected="true"]:hover { background: #4C5539 !important; }
+[data-testid="stRadioOption"] p { margin: 0; font-size: 13px; color: inherit !important; font-weight: inherit; }
 [data-testid="stTextInputRootElement"],
 [data-testid="stTextAreaRootElement"] {
   background: #FFFFFF !important;
@@ -156,12 +175,13 @@ div[data-testid="stRadio"] [role="radiogroup"] { display: flex; flex-wrap: wrap;
 [data-testid="stFileUploaderDropzoneInstructions"] { display: none !important; }
 [data-testid="stWidgetLabel"] p { font-size: 11px !important; color: #666666 !important; }
 .stApp button {
-  border-radius: 0;
-  letter-spacing: 0.12em;
+  border-radius: 4px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   font-size: 12px;
   font-weight: 500;
   box-shadow: none;
+  transition: background 0.15s ease;
 }
 .stApp button[kind="primary"], .stApp button[data-testid="stBaseButton-primary"] {
   background: #4C5539;
@@ -170,23 +190,41 @@ div[data-testid="stRadio"] [role="radiogroup"] { display: flex; flex-wrap: wrap;
 }
 .stApp button[kind="secondary"], .stApp button[data-testid="stBaseButton-secondary"] {
   background: #FFFFFF;
-  color: #4C5539;
+  color: #1A1A1A;
   border: 1px solid #E2E2DC;
 }
-.stApp button:hover { border-color: #4C5539; }
+.stApp button[kind="secondary"]:hover, .stApp button[data-testid="stBaseButton-secondary"]:hover {
+  background: #F0F0EC;
+  border-color: #E2E2DC;
+  color: #1A1A1A;
+}
 .stApp button:focus { box-shadow: none !important; }
-.stTabs [data-baseweb="tab-list"] { gap: 1.4rem; border-bottom: 1px solid #E2E2DC; }
-.stTabs [data-baseweb="tab"] {
-  background: transparent;
+.stTabs [data-baseweb="tab-list"] {
+  gap: 8px;
+  border-bottom: none;
+}
+.stTabs [data-baseweb="tab"],
+[data-testid="stTab"] {
+  background: #FFFFFF;
+  color: #1A1A1A;
+  border: 1px solid #E2E2DC;
+  border-radius: 4px;
   height: auto;
-  padding: 0.55rem 0 0.7rem;
-  color: #666666;
+  padding: 0.45rem 0.85rem;
   font-size: 12px;
-  letter-spacing: 0.12em;
+  font-weight: 500;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
-.stTabs [aria-selected="true"] { color: #4C5539; }
-.stTabs [data-baseweb="tab-highlight"] { background-color: #4C5539 !important; }
+.stTabs [data-baseweb="tab"]:hover,
+[data-testid="stTab"]:hover { background: #F0F0EC; }
+.stTabs [aria-selected="true"],
+[data-testid="stTab"][aria-selected="true"] {
+  background: #4C5539 !important;
+  color: #F8F8F5 !important;
+  border: 1px solid #4C5539 !important;
+}
+.stTabs [data-baseweb="tab-highlight"],
 .stTabs [data-baseweb="tab-border"] { display: none; }
 [data-testid="stFileUploader"] section {
   background: #FFFFFF;
@@ -220,12 +258,13 @@ _BEATS = (
 
 _PALETTE_TEMPLATE = """<!DOCTYPE html>
 <html><head>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500&family=Outfit:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500&family=Playfair+Display:wght@500&display=swap">
 <style>
   html, body { margin: 0; background: transparent; font-family: Outfit, "Segoe UI", sans-serif; color: #1A1A1A; }
-  .card { background: #fff; border: 1px solid #E2E2DC; padding: 20px 22px 16px; box-sizing: border-box; }
-  .kicker, .source, .hint { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #8C947D; }
-  h3 { font-family: "Cormorant Garamond", Georgia, serif; font-weight: 500; font-size: 26px; color: #4C5539; margin: 4px 0 6px; letter-spacing: -0.02em; }
+  .card { background: #fff; border: 1px solid #E2E2DC; padding: 20px; box-sizing: border-box; }
+  .kicker, .hint { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #8C947D; }
+  .source { display: inline-block; margin-top: 14px; background: #EFEFED; border: 1px solid #E2E2DC; color: #555555; font-size: 10px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; padding: 4px 8px; border-radius: 4px; }
+  h3 { font-family: "Playfair Display", Georgia, serif; font-weight: 500; font-size: 26px; color: #4C5539; margin: 4px 0 6px; letter-spacing: -0.02em; }
   .note, .why { font-size: 11px; line-height: 1.5; color: #666; }
   .note { font-size: 13px; margin: 0 0 14px; }
   .why { margin: 12px 0 0; }
@@ -243,7 +282,7 @@ _PALETTE_TEMPLATE = """<!DOCTYPE html>
   <p class="note">__NOTE__</p>
   <div class="spectrum">__SWATCHES__</div>
   <p class="why">__WHY__</p>
-  <div class="source">[ SOURCE: __SOURCE__ ]</div>
+  <div class="source">Source · __SOURCE__</div>
 </div>
 <script>
 function copyHex(value, btn) {
@@ -426,7 +465,6 @@ def render_controls() -> tuple[str, str]:
         "Geography",
         labels,
         index=0,
-        format_func=lambda label: f"[ {label} ]",
         horizontal=True,
         label_visibility="collapsed",
         key="region_label",
@@ -436,7 +474,6 @@ def render_controls() -> tuple[str, str]:
         "Timeframe",
         list(TIMEFRAMES),
         index=2,
-        format_func=lambda label: f"[ {label} ]",
         horizontal=True,
         label_visibility="collapsed",
         key="timeframe",
@@ -478,7 +515,7 @@ def render_visuals(region: dict, visuals: list[dict], domains: list[dict]) -> No
             <div class="card">
               <p class="note">Paste a competitor address. The scan reads public HTML, headers, and common pixels.</p>
               <p class="why">Pixels and the CMS tell you how demand is measured, and how heavy a rebuild will be. Pitch the measurement gap, not a shopping list of tools.</p>
-              <span class="source-badge">[ SOURCE: PUBLIC PAGE HEADERS ]</span>
+              <span class="source-badge">Source · PUBLIC PAGE HEADERS</span>
             </div>
             """
         )
@@ -488,7 +525,7 @@ def render_visuals(region: dict, visuals: list[dict], domains: list[dict]) -> No
             <div class="card">
               <h3>Page not read</h3>
               <p class="why">{esc(audit.get("error"))}</p>
-              <span class="source-badge">[ SOURCE: {esc(audit.get("source"))} ]</span>
+              <span class="source-badge">Source · {esc(audit.get("source"))}</span>
             </div>
             """
         )
@@ -504,7 +541,7 @@ def render_visuals(region: dict, visuals: list[dict], domains: list[dict]) -> No
               <div style="margin-top:12px">{tags}</div>
               {notes}
               <p class="why">Pixels and the CMS tell you how demand is measured, and how heavy a rebuild will be. Pitch the measurement gap, not a shopping list of tools.</p>
-              <span class="source-badge">[ SOURCE: {esc(audit.get("source"))} ]</span>
+              <span class="source-badge">Source · {esc(audit.get("source"))}</span>
             </div>
             """
         )
@@ -525,7 +562,7 @@ def render_visuals(region: dict, visuals: list[dict], domains: list[dict]) -> No
             <div class="card">
               <h3>No color clusters in this window</h3>
               <p class="why">Open 30 Days, or fetch the latest intel. Dominant regional HEX clusters — use to spot visual whitespace.</p>
-              <span class="source-badge">[ SOURCE: STUDIO BASELINE ]</span>
+              <span class="source-badge">Source · STUDIO BASELINE</span>
             </div>
             """
         )
@@ -571,7 +608,7 @@ def render_visuals(region: dict, visuals: list[dict], domains: list[dict]) -> No
                   <div class="kicker">{esc(duration_tag(row.get("active_days") or 0))}</div>
                   <h3>{esc(row.get("ad_format"))}</h3>
                   <p class="why">{esc(row.get("insight"))}</p>
-                  <span class="source-badge">[ SOURCE: {esc(row.get("source"))} ]</span>
+                  <span class="source-badge">Source · {esc(row.get("source"))}</span>
                 </div>
                 """
             )
@@ -593,7 +630,7 @@ def render_visuals(region: dict, visuals: list[dict], domains: list[dict]) -> No
                       <h3>{esc(row.get("domain_name"))}</h3>
                       <p class="meta-line">{esc(movement_line(row.get("rank_change")))}</p>
                       <p class="why">{esc(row.get("insight"))}</p>
-                      <span class="source-badge">[ SOURCE: {esc(row.get("source"))} ]</span>
+                      <span class="source-badge">Source · {esc(row.get("source"))}</span>
                     </div>
                     <div class="position">{esc(row.get("rank_position"))}</div>
                   </div>
@@ -618,7 +655,7 @@ def render_hooks(region: dict, timeframe: str, hooks: list[dict]) -> None:
             <div class="card">
               <h3>No opening lines in this window</h3>
               <p class="why">Open 30 Days for the rehearsal set, or fetch the latest intel for public clips.</p>
-              <span class="source-badge">[ SOURCE: STUDIO BASELINE ]</span>
+              <span class="source-badge">Source · STUDIO BASELINE</span>
             </div>
             """
         )
@@ -646,7 +683,7 @@ def render_hooks(region: dict, timeframe: str, hooks: list[dict]) -> None:
               <p class="quote">{esc(row.get("hook_text"))}</p>
               <div class="beats">{"".join(beats)}</div>
               <p class="why">{esc(row.get("insight"))}</p>
-              <span class="source-badge">[ SOURCE: {esc(row.get("source"))} ]</span>
+              <span class="source-badge">Source · {esc(row.get("source"))}</span>
             </div>
             """
         )
@@ -694,7 +731,7 @@ def render_hooks(region: dict, timeframe: str, hooks: list[dict]) -> None:
           </div>
           {"".join(pace_rows)}
           <p class="why">{esc(why)}</p>
-          <span class="source-badge">[ SOURCE: {esc(source)} ]</span>
+          <span class="source-badge">Source · {esc(source)}</span>
         </div>
         """
     )
@@ -711,7 +748,7 @@ def render_proposal(text: str, source: str) -> None:
             <div class="card">
               <h3>{esc(title)}</h3>
               {body_html}
-              <span class="source-badge">[ SOURCE: {esc(source)} ]</span>
+              <span class="source-badge">Source · {esc(source)}</span>
             </div>
             """
         )
@@ -766,7 +803,7 @@ def render_strategy(region: dict, timeframe: str, visuals: list[dict], hooks: li
                 </div>
                 """
             )
-    history = recent_proposals(region["id"], limit=5)
+    history = recent_proposals(region["id"], timeframe, limit=5)
     current_text = (proposal or {}).get("text") if proposal and proposal.get("region") == region["id"] else ""
     older = [row for row in history if row.get("generated_proposal") != current_text]
     if older:
