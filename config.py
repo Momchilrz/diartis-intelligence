@@ -14,6 +14,14 @@ load_dotenv(ROOT / ".env")
 
 def _env(name: str) -> str:
     value = os.getenv(name, "")
+    if not value:
+        try:
+            import streamlit as st
+
+            if name in st.secrets:
+                value = str(st.secrets[name])
+        except Exception:
+            value = ""
     return value.strip().strip('"').strip("'")
 
 

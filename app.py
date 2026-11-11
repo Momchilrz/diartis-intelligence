@@ -269,6 +269,15 @@ def show(fragment: str) -> None:
         st.html(fragment)
 
 
+def embed_html(document: str) -> None:
+    if hasattr(st, "iframe"):
+        st.iframe(document, height="content", width="stretch")
+        return
+    import streamlit.components.v1 as components
+
+    components.html(document, height=340, scrolling=False)
+
+
 def columns(spec, **kwargs):
     kwargs.setdefault("wrap", False)
     kwargs.setdefault("vertical_alignment", "top")
@@ -404,7 +413,7 @@ def palette_frame(colors: list[str], eyebrow: str, title: str, note: str, why: s
         ("__SWATCHES__", "".join(swatches)),
     ):
         document = document.replace(token, value)
-    st.iframe(document, height="content", width="stretch")
+    embed_html(document)
 
 
 def render_gate() -> None:
