@@ -14,7 +14,6 @@ from config import (
     BRAND_PALETTE,
     LABEL_TO_REGION,
     REGIONS,
-    SOURCE_BRAND,
     TIMEFRAMES,
     scrub,
 )
@@ -30,7 +29,7 @@ from data.db import (
 )
 from seed_data import seed_if_empty
 from services.apify_scraper import present_hook, refresh_region as refresh_hooks
-from services.color_extractor import extract_from_bytes, extract_from_url, safe_hex
+from services.color_extractor import safe_hex
 from services.deepseek_copilot import compose_context, propose
 from services.serp_monitor import refresh_region as refresh_search
 from services.tech_detector import inspect_url
@@ -600,35 +599,6 @@ def render_visuals(region: dict, visuals: list[dict], domains: list[dict], openi
                 """
             )
         show("".join(cards))
-
-    with st.expander("Colors from one picture"):
-        show('<p class="note">This is not the market. It reads a single image and returns the five colors that fill most of the frame.</p>')
-        image_url = st.text_input("Image address", placeholder="https://", key="image_url")
-        extract = press("Extract palette", key="extract_palette")
-        upload = st.file_uploader("Or a still from your machine", type=["png", "jpg", "jpeg", "webp"], key="image_file")
-        if extract:
-            if upload is not None:
-                st.session_state["extracted"] = extract_from_bytes(upload.getvalue())
-            elif image_url.strip():
-                with st.spinner("Reading the image…"):
-                    st.session_state["extracted"] = extract_from_url(image_url.strip())
-            else:
-                st.session_state["extracted"] = {
-                    "ok": False,
-                    "colors": list(BRAND_PALETTE),
-                    "source": SOURCE_BRAND,
-                    "note": "Add an image address or a still.",
-                }
-        extracted = st.session_state.get("extracted")
-        if extracted:
-            palette_frame(
-                extracted.get("colors") or BRAND_PALETTE,
-                "One picture",
-                "Extracted palette" if extracted.get("ok") else "No picture read",
-                extracted.get("note") or "",
-                "These five colors are the picture, not the region.",
-                extracted.get("source") or SOURCE_BRAND,
-            )
 
 
 def render_hooks(region: dict, timeframe: str, openings: list[dict]) -> None:
