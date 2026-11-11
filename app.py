@@ -29,7 +29,7 @@ from data.db import (
     recent_proposals,
 )
 from seed_data import seed_if_empty
-from services.apify_scraper import refresh_region as refresh_hooks
+from services.apify_scraper import present_hook, refresh_region as refresh_hooks
 from services.color_extractor import extract_from_bytes, extract_from_url, safe_hex
 from services.deepseek_copilot import compose_context, propose
 from services.serp_monitor import refresh_region as refresh_search
@@ -249,12 +249,6 @@ _HEADING = re.compile(
     r"(?im)^\s*(?:#{1,3}\s*)?(1\.\s*VISUAL DIRECTION[^\n]*|2\.\s*SHORT-FORM[^\n]*|3\.\s*CLIENT PITCH[^\n]*)\s*$"
 )
 _BOLD = re.compile(r"(\*\*[^*]+\*\*)")
-_BEATS = (
-    ("01", "Hook", "hook"),
-    ("02", "Customer Friction", "friction"),
-    ("03", "Core Value", "value"),
-    ("04", "Call to Action", "cta"),
-)
 
 _PALETTE_TEMPLATE = """<!DOCTYPE html>
 <html><head>
@@ -493,12 +487,50 @@ def render_controls() -> tuple[str, str]:
     return region_id, timeframe
 
 
-def render_visuals(region: dict, visuals: list[dict], domains: list[dict]) -> None:
+def desk_hooks(hooks: list[dict]) -> list[dict]:
+    """Keep only openings that are actual sentences, at most three."""
+    shown = []
+    seen = set()
+    labels = {
+        "Hook": "hook",
+        "Customer Friction": "friction",
+        "Core Value": "value",
+        "Call to Action": "cta",
+    }
+    for row in hooks:
+        clean = present_hook(row)
+        if not clean:
+            continue
+        key = clean["line"].lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        script = {"hook": clean["line"], "friction": "", "value": "", "cta": ""}
+        for beat in clean["beats"]:
+            script[labels[beat["label"]]] = beat["text"]
+        shown.append(
+            {
+                **row,
+                "hook_text": clean["line"],
+                "insight": clean["insight"],
+                "archetype": clean["archetype"],
+                "engagement_tier": clean["tier"] or row.get("engagement_tier") or "",
+                "script_structure": script,
+                "beats": clean["beats"],
+                "source": clean["source"] or row.get("source"),
+            }
+        )
+        if len(shown) == 3:
+            break
+    return shown
+
+
+def render_visuals(region: dict, visuals: list[dict], domains: list[dict], openings: list[dict]) -> None:
     show(
         f"""
         <div class="section-head">
-          <h2>Visual &amp; brand radar</h2>
-          <p>{esc(region["short"])}. The colors already in market, the layouts still running, and who holds the search click.</p>
+          <h2>The board</h2>
+          <p>{esc(region["short"])} · colors in this window, who holds the search click, and three lines worth saying.</p>
         </div>
         """
     )
@@ -506,7 +538,7 @@ def render_visuals(region: dict, visuals: list[dict], domains: list[dict]) -> No
         lead = visuals[0]
         palette_frame(
             lead.get("hex_codes") or BRAND_PALETTE,
-            "Regional palette",
+            "Colors in this window",
             lead.get("ad_format") or "Color clusters",
             f"Most recent format in this window. {duration_tag(lead.get('active_days') or 0)}.",
             lead.get("insight") or "Dominant regional HEX clusters — use to spot visual whitespace.",
@@ -523,174 +555,133 @@ def render_visuals(region: dict, visuals: list[dict], domains: list[dict]) -> No
             """
         )
 
-    show("<h3 class='serif' style='font-size:28px;margin:0.4rem 0 0.55rem;'>Reference image</h3>")
-    show('<p class="note" style="margin-top:-0.35rem;margin-bottom:0.6rem;">Cluster a still from their site or film. Five HEX values, ordered by share of the frame.</p>')
-    image_url = st.text_input("Image address", placeholder="https://", key="image_url")
-    extract = press("Extract palette", key="extract_palette")
-    upload = st.file_uploader("Or a still from your machine", type=["png", "jpg", "jpeg", "webp"], key="image_file")
-    if extract:
-        if upload is not None:
-            st.session_state["extracted"] = extract_from_bytes(upload.getvalue())
-        elif image_url.strip():
-            with st.spinner("Reading the image…"):
-                st.session_state["extracted"] = extract_from_url(image_url.strip())
-        else:
-            st.session_state["extracted"] = {
-                "ok": False,
-                "colors": list(BRAND_PALETTE),
-                "source": SOURCE_BRAND,
-                "note": "Add an image address or a still. Showing the diArtis brand tones.",
-            }
-    extracted = st.session_state.get("extracted")
-    if extracted:
-        palette_frame(
-            extracted.get("colors") or BRAND_PALETTE,
-            "Reference image",
-            "Extracted palette" if extracted.get("ok") else "Brand tones",
-            extracted.get("note") or "",
-            "Use the largest share as the ground. If it matches the regional palette, it is not whitespace.",
-            extracted.get("source") or SOURCE_BRAND,
-        )
-
-    show("<h3 class='serif' style='font-size:28px;margin:0.3rem 0 0.7rem;'>Active creative formats</h3>")
-    if not visuals:
-        show('<div class="card"><p class="why">No active formats in this window.</p></div>')
-    else:
-        cards = []
-        for row in visuals:
-            cards.append(
-                f"""
-                <div class="card">
-                  <div class="kicker">{esc(duration_tag(row.get("active_days") or 0))}</div>
-                  <h3>{esc(row.get("ad_format"))}</h3>
-                  <p class="why">{esc(row.get("insight"))}</p>
-                  <span class="source-badge">Source · {esc(row.get("source"))}</span>
-                </div>
-                """
-            )
-        show('<div class="grid-3">' + "".join(cards) + "</div>")
-
-    show("<h3 class='serif' style='font-size:28px;margin:1.1rem 0 0.7rem;'>Search position movement</h3>")
+    show("<h3 class='serif' style='font-size:28px;margin:0.4rem 0 0.55rem;'>Searches</h3>")
     ranked = balanced(domains, lambda row: row.get("target_keyword"), 6)
     if not ranked:
         show('<div class="card"><p class="why">No positions in this window. Widen the timeframe, or fetch the latest intel.</p></div>')
     else:
-        cards = []
+        rows = []
         for row in ranked:
-            cards.append(
+            rows.append(
                 f"""
-                <div class="card">
-                  <div class="rank">
-                    <div>
-                      <div class="kicker">{esc(row.get("target_keyword"))}</div>
-                      <h3>{esc(row.get("domain_name"))}</h3>
-                      <p class="meta-line">{esc(movement_line(row.get("rank_change")))}</p>
-                      <p class="why">{esc(row.get("insight"))}</p>
-                      <span class="source-badge">Source · {esc(row.get("source"))}</span>
-                    </div>
-                    <div class="position">{esc(row.get("rank_position"))}</div>
+                <div class="pace-row" style="padding:14px 0;border-top:1px solid #E2E2DC;">
+                  <div>
+                    <div class="kicker">{esc(row.get("target_keyword"))}</div>
+                    <p class="meta-line">{esc(row.get("domain_name"))}</p>
+                    <p class="why">{esc(movement_line(row.get("rank_change")))}</p>
                   </div>
+                  <div class="position">{esc(row.get("rank_position"))}</div>
                 </div>
                 """
             )
-        show('<div class="grid-2">' + "".join(cards) + "</div>")
+        source = ranked[0].get("source") or "STUDIO BASELINE"
+        show(
+            f"""
+            <div class="card">
+              {"".join(rows)}
+              <span class="source-badge">Source · {esc(source)}</span>
+            </div>
+            """
+        )
+
+    show("<h3 class='serif' style='font-size:28px;margin:0.2rem 0 0.55rem;'>Openings</h3>")
+    if not openings:
+        show('<div class="card"><p class="why">No spoken opening in this window. Hashtag piles are left out.</p></div>')
+    else:
+        cards = []
+        for row in openings:
+            cards.append(
+                f"""
+                <div class="card">
+                  <div class="kicker">{esc(row.get("archetype"))}</div>
+                  <p class="quote">{esc(row.get("hook_text"))}</p>
+                  <p class="why">{esc(row.get("insight"))}</p>
+                </div>
+                """
+            )
+        show("".join(cards))
+
+    with st.expander("Colors from one picture"):
+        show('<p class="note">This is not the market. It reads a single image and returns the five colors that fill most of the frame.</p>')
+        image_url = st.text_input("Image address", placeholder="https://", key="image_url")
+        extract = press("Extract palette", key="extract_palette")
+        upload = st.file_uploader("Or a still from your machine", type=["png", "jpg", "jpeg", "webp"], key="image_file")
+        if extract:
+            if upload is not None:
+                st.session_state["extracted"] = extract_from_bytes(upload.getvalue())
+            elif image_url.strip():
+                with st.spinner("Reading the image…"):
+                    st.session_state["extracted"] = extract_from_url(image_url.strip())
+            else:
+                st.session_state["extracted"] = {
+                    "ok": False,
+                    "colors": list(BRAND_PALETTE),
+                    "source": SOURCE_BRAND,
+                    "note": "Add an image address or a still.",
+                }
+        extracted = st.session_state.get("extracted")
+        if extracted:
+            palette_frame(
+                extracted.get("colors") or BRAND_PALETTE,
+                "One picture",
+                "Extracted palette" if extracted.get("ok") else "No picture read",
+                extracted.get("note") or "",
+                "These five colors are the picture, not the region.",
+                extracted.get("source") or SOURCE_BRAND,
+            )
 
 
-def render_hooks(region: dict, timeframe: str, hooks: list[dict]) -> None:
+def render_hooks(region: dict, timeframe: str, openings: list[dict]) -> None:
     show(
         f"""
         <div class="section-head">
-          <h2>Short-form hook engine</h2>
-          <p>{esc(region["short"])} · {esc(timeframe)}. Opening lines, the four beats under them, and the pace of the cut.</p>
+          <h2>Openings</h2>
+          <p>{esc(region["short"])} · {esc(timeframe)}. Up to three lines a person could actually say. Hashtag piles are left out.</p>
         </div>
         """
     )
-    if not hooks:
+    if not openings:
         show(
             """
             <div class="card">
-              <h3>No opening lines in this window</h3>
-              <p class="why">Open 30 Days for the rehearsal set, or fetch the latest intel for public clips.</p>
-              <span class="source-badge">Source · STUDIO BASELINE</span>
+              <h3>No spoken opening in this window</h3>
+              <p class="why">The clips in this window are captions and hashtags, not lines. Widen the timeframe, or fetch again.</p>
             </div>
             """
         )
         return
     cards = []
-    for row in hooks[:4]:
-        script = row.get("script_structure") or {}
-        beats = []
-        for number, label, key in _BEATS:
-            beats.append(
+    for row in openings:
+        beats = row.get("beats") or []
+        beat_html = ""
+        if beats:
+            cells = "".join(
                 f"""
                 <div>
-                  <span class="kicker">{number} · {label}</span>
-                  <p>{esc(script.get(key) or "Not stated.")}</p>
+                  <span class="kicker">{esc(beat["number"])} · {esc(beat["label"])}</span>
+                  <p>{esc(beat["text"])}</p>
                 </div>
                 """
+                for beat in beats
             )
+            beat_html = f'<div class="beats">{cells}</div>'
+        tier = row.get("engagement_tier") or ""
+        tier_html = f'<span class="tier">{esc(tier)}</span>' if tier else ""
         cards.append(
             f"""
             <div class="card">
               <div class="card-top">
                 <span class="kicker">{esc(row.get("archetype"))}</span>
-                <span class="tier">{esc(row.get("engagement_tier"))}</span>
+                {tier_html}
               </div>
               <p class="quote">{esc(row.get("hook_text"))}</p>
-              <div class="beats">{"".join(beats)}</div>
+              {beat_html}
               <p class="why">{esc(row.get("insight"))}</p>
               <span class="source-badge">Source · {esc(row.get("source"))}</span>
             </div>
             """
         )
     show("".join(cards))
-
-    cuts = []
-    pace_rows = []
-    for row in hooks[:4]:
-        script = row.get("script_structure") or {}
-        cut = script.get("cut_seconds")
-        if isinstance(cut, (int, float)):
-            cuts.append(float(cut))
-            cut_label = f"{float(cut):.1f}s"
-        else:
-            cut_label = "Unpublished"
-        pace_rows.append(
-            f"""
-            <div class="pace-row" style="padding:12px 0;border-top:1px solid #E2E2DC;">
-              <div>
-                <div class="kicker">{esc(script.get("audio") or "Audio not listed")}</div>
-                <p class="meta-line">{esc(row.get("hook_text"))}</p>
-              </div>
-              <div class="serif" style="font-size:22px;">{esc(cut_label)}</div>
-            </div>
-            """
-        )
-    if cuts:
-        headline = f"{sum(cuts) / len(cuts):.1f}s"
-        caption = "Average cut frequency"
-        why = "Cut speed is the region’s tolerance for silence. Match it, then hold one shot a beat longer so the film feels considered."
-    else:
-        headline = "—"
-        caption = "Cut speed unpublished"
-        why = "These clips did not publish a cut rate. Judge the opening line, not a pace number."
-    source = hooks[0].get("source") or "STUDIO BASELINE"
-    show(
-        f"""
-        <div class="card">
-          <div class="card-top">
-            <div>
-              <div class="kicker">Audio &amp; pacing</div>
-              <p class="pace-num">{headline}</p>
-              <p class="note">{esc(caption)}</p>
-            </div>
-          </div>
-          {"".join(pace_rows)}
-          <p class="why">{esc(why)}</p>
-          <span class="source-badge">Source · {esc(source)}</span>
-        </div>
-        """
-    )
 
 
 def render_proposal(text: str, source: str) -> None:
@@ -715,13 +706,13 @@ def render_strategy(region: dict, timeframe: str, visuals: list[dict], hooks: li
     show(
         f"""
         <div class="section-head">
-          <h2>Strategic assistant</h2>
-          <p>A pitch for {esc(region["short"])}, grounded in the {esc(timeframe.lower())} cache on this desk.</p>
+          <h2>Pitch</h2>
+          <p>A pitch for {esc(region["short"])}, using the colors, searches, and openings on the board.</p>
         </div>
         """
     )
     show(
-        f'<p class="why" style="margin-bottom:0.7rem;">Grounded in {len(visuals)} formats, {len(hooks)} hooks, and {len(domains)} positions currently in view.</p>'
+        f'<p class="why" style="margin-bottom:0.7rem;">Using {len(visuals)} color sets, {len(hooks)} openings, and {len(domains)} search positions from this window.</p>'
     )
     brief = st.text_area(
         "Client brief",
@@ -876,17 +867,18 @@ def render_desk() -> None:
     visuals = fetch_visuals(region_id, timeframe)
     hooks = fetch_hooks(region_id, timeframe)
     domains = fetch_domains(region_id, timeframe)
+    openings = desk_hooks(hooks)
     visual_tab, hook_tab, site_tab, strategy_tab = st.tabs(
-        ["Visual & Brand Radar", "Short-Form Hook Engine", "Site read", "Strategic Assistant"]
+        ["Board", "Openings", "Site read", "Pitch"]
     )
     with visual_tab:
-        render_visuals(region, visuals, domains)
+        render_visuals(region, visuals, domains, openings)
     with hook_tab:
-        render_hooks(region, timeframe, hooks)
+        render_hooks(region, timeframe, openings)
     with site_tab:
         render_site()
     with strategy_tab:
-        render_strategy(region, timeframe, visuals, hooks, domains)
+        render_strategy(region, timeframe, visuals, openings, domains)
     show('<p class="footer">diArtis Studio · Varna · For pitch preparation</p>')
 
 

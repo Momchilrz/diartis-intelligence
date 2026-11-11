@@ -10,25 +10,61 @@ from config import APIFY_ACTOR_URL, APIFY_API_TOKEN, APIFY_QUERIES, SOURCE_APIFY
 from data.db import connect, insert_hook
 
 _SENTENCE = re.compile(r"(?<=[.!?])\s+")
+_HASHTAG = re.compile(r"#\S+")
+_EMOJI = re.compile(
+    "["
+    "\U0001F1E6-\U0001F1FF"
+    "\U0001F300-\U0001FAFF"
+    "\U00002700-\U000027BF"
+    "\U00002600-\U000026FF"
+    "\uFE0F"
+    "\u200D"
+    "]+",
+    flags=re.UNICODE,
+)
+_NOT_STATED = re.compile(r"^not stated\b", re.IGNORECASE)
+
+
+def spoken_line(text: str, *, limit: int = 28) -> str:
+    """A sentence a person could say. Hashtags, emoji, and filler are dropped."""
+    raw = _EMOJI.sub(" ", text or "")
+    raw = _HASHTAG.sub(" ", raw)
+    raw = raw.replace("…", " ").replace("...", " ")
+    raw = re.sub(r"\s+", " ", raw).strip(" \"'“”")
+    if not raw or _NOT_STATED.match(raw):
+        return ""
+    sentence = _SENTENCE.split(raw)[0].strip()
+    words = [word for word in sentence.split() if word]
+    if words and len(words[-1]) == 1 and words[-1].isalpha():
+        words = words[:-1]
+    if len(words) < 3:
+        return ""
+    words = words[:limit]
+    return " ".join(words).strip(" \"'")
+
+
+def line_insight(line: str) -> str:
+    lowered = line.lower()
+    if "?" in line or lowered.startswith(("did ", "do you", "why ", "what ", "how ", "am i", "is this")):
+        return "Opens on a question. The next frame has to answer it with the client's own case."
+    if any(token in lowered for token in ("mistake", "don't", "dont", "stop ", "wrong", "cheap")):
+        return "Names a doubt in the first line. Keep the doubt, then show the result."
+    if "not" in lowered and "done" in lowered:
+        return "The promise is a result that does not look treated. Show one real case and stop talking."
+    return "Say this sentence, then show the work. The rest of a caption is explanation, not the opening."
 
 
 def _opening_line(text: str) -> str:
-    clean = " ".join((text or "").split())
-    if not clean:
-        return ""
-    line = _SENTENCE.split(clean)[0].strip()
-    if len(line) > 180:
-        line = line[:177].rstrip() + "…"
-    return line
+    return spoken_line(text)
 
 
 def _blocks(text: str) -> dict:
-    parts = [part.strip() for part in _SENTENCE.split(" ".join((text or "").split())) if part.strip()]
+    raw = _EMOJI.sub(" ", text or "")
+    raw = _HASHTAG.sub(" ", raw)
+    raw = re.sub(r"\s+", " ", raw).strip()
+    parts = [spoken_line(part, limit=40) for part in _SENTENCE.split(raw) if spoken_line(part, limit=40)]
     labels = ("hook", "friction", "value", "cta")
-    blocks = {}
-    for index, label in enumerate(labels):
-        blocks[label] = parts[index] if index < len(parts) else "Not stated in the public caption."
-    return blocks
+    return {label: parts[index] if index < len(parts) else "" for index, label in enumerate(labels)}
 
 
 def archetype_for(text: str) -> str:
@@ -40,6 +76,48 @@ def archetype_for(text: str) -> str:
     if any(token in lowered for token in ("mistake", "wrong", "cheap", "template", "nobody", "hate", "ugly", "enough")):
         return "Negative Friction"
     return "Direct Statement"
+
+
+def present_hook(row: dict) -> dict | None:
+    """A card Diana can read. Captions that are only hashtags are dropped."""
+    script = row.get("script_structure") if isinstance(row.get("script_structure"), dict) else {}
+    line = spoken_line(str(row.get("hook_text") or "")) or spoken_line(str(script.get("hook") or ""))
+    if not line:
+        for key in ("friction", "value", "cta"):
+            line = spoken_line(str(script.get(key) or ""))
+            if line:
+                break
+    if not line:
+        return None
+    beats = []
+    for number, label, key in (
+        ("01", "Hook", "hook"),
+        ("02", "Customer Friction", "friction"),
+        ("03", "Core Value", "value"),
+        ("04", "Call to Action", "cta"),
+    ):
+        text = line if key == "hook" else spoken_line(str(script.get(key) or ""), limit=36)
+        if not text or (key != "hook" and text.lower() == line.lower()):
+            continue
+        beats.append({"number": number, "label": label, "text": text})
+    source = str(row.get("source") or "")
+    if source == "STUDIO BASELINE" and row.get("insight"):
+        insight = str(row["insight"])
+        archetype = str(row.get("archetype") or archetype_for(line))
+    else:
+        insight = line_insight(line)
+        archetype = archetype_for(line)
+    tier = str(row.get("engagement_tier") or "")
+    if tier == "Unranked":
+        tier = ""
+    return {
+        "line": line,
+        "beats": beats if len(beats) > 1 else [],
+        "insight": insight,
+        "archetype": archetype,
+        "tier": tier,
+        "source": source,
+    }
 
 
 def _tier(play_count) -> str:
@@ -104,10 +182,7 @@ def rows_from_items(items: list, region: str) -> list[dict]:
                 "archetype": archetype,
                 "engagement_tier": tier,
                 "script_structure": blocks,
-                "insight": (
-                    f"{archetype} opening on a {tier.lower()} public clip. "
-                    "Lift the sentence shape, then replace the proof with the client's own work."
-                ),
+                "insight": line_insight(hook),
                 "source": SOURCE_APIFY,
             }
         )
